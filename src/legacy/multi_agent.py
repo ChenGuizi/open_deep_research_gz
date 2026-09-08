@@ -4,6 +4,7 @@ import operator
 import warnings
 
 from langchain.chat_models import init_chat_model
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool, BaseTool
 from langchain_core.runnables import RunnableConfig
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -211,9 +212,6 @@ async def supervisor(state: ReportState, config: RunnableConfig):
         llm
         .bind_tools(
             supervisor_tool_list,
-            parallel_tool_calls=False,
-            # force at least one tool call
-            tool_choice="any"
         )
     )
 
@@ -267,10 +265,11 @@ async def supervisor_tools(state: ReportState, config: RunnableConfig)  -> Comma
             observation = tool.invoke(tool_call["args"], config)
 
         # Append to messages 
-        result.append({"role": "tool", 
-                       "content": observation, 
-                       "name": tool_call["name"], 
-                       "tool_call_id": tool_call["id"]})
+        result.append(ToolMessage(
+            content=str(observation),
+            name=tool_call["name"],
+            tool_call_id=tool_call["id"],
+        ))
         
         # Store special tool results for processing after all tools have been called
         if tool_call["name"] == "Question":
@@ -303,7 +302,24 @@ async def supervisor_tools(state: ReportState, config: RunnableConfig)  -> Comma
     # After processing all tool calls, decide what to do next
     if sections_list:
         # Send the sections to the research agents
-        return Command(goto=[Send("research_team", {"section": s}) for s in sections_list], update={"messages": result})
+        return Command(
+            goto=[
+                Send(
+                    "research_team",
+                    {
+                        "section": s,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": f"Please research and write the section: {s}",
+                            }
+                        ],
+                    },
+                )
+                for s in sections_list
+            ],
+            update={"messages": result},
+        )
     elif intro_content:
         # Store introduction while waiting for conclusion
         # Append to messages to guide the LLM to write conclusion next
@@ -378,10 +394,7 @@ async def research_agent(state: SectionState, config: RunnableConfig):
     return {
         "messages": [
             # Enforce tool calling to either perform more search or call the Section tool to write the section
-            await llm.bind_tools(research_tool_list,             
-                                 parallel_tool_calls=False,
-                                 # force at least one tool call
-                                 tool_choice="any").ainvoke(
+            await llm.bind_tools(research_tool_list).ainvoke(
                 [
                     {
                         "role": "system",
@@ -421,10 +434,11 @@ async def research_agent_tools(state: SectionState, config: RunnableConfig):
             observation = tool.invoke(tool_call["args"], config)
 
         # Append to messages 
-        result.append({"role": "tool", 
-                       "content": observation, 
-                       "name": tool_call["name"], 
-                       "tool_call_id": tool_call["id"]})
+        result.append(ToolMessage(
+            content=str(observation),
+            name=tool_call["name"],
+            tool_call_id=tool_call["id"],
+        ))
         
         # Store the section observation if a Section tool was called
         if tool_call["name"] == "Section":
