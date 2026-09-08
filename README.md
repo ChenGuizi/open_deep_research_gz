@@ -57,6 +57,19 @@ This will open the LangGraph Studio UI in your browser.
 
 Ask a question in the `messages` input field and click `Submit`. Select different configuration in the "Manage Assistants" tab.
 
+#### Streamlit local chat UI
+
+The repository also includes a local chat interface in `streamlit_app.py`. From the repository root on Windows:
+
+```powershell
+uv sync
+Copy-Item .env.example .env
+# Add GOOGLE_API_KEY and TAVILY_API_KEY to .env
+uv run streamlit run streamlit_app.py
+```
+
+Streamlit will open the UI at `http://localhost:8501`. If it does not open automatically, paste that URL into your browser. The app keeps checkpoints in memory for the current process; use **New research** in the sidebar to start a separate thread.
+
 ### ⚙️ Configurations
 
 #### LLM :brain:
